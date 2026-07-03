@@ -315,8 +315,25 @@ const fetchCookies = async (email, password) => {
   }
 };
 
-module.exports = {
-  clockIn,
-  clockOut,
-  fetchCookies,
+const rootHandler = async (req, res) => {
+  if (!req || !res) {
+    return;
+  }
+
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.end(
+    JSON.stringify({
+      success: true,
+      service: "talenta-api",
+      status: "ok",
+      endpoints: ["/health", "/fetch-cookies", "/clockin", "/clockout"],
+    })
+  );
 };
+
+rootHandler.clockIn = clockIn;
+rootHandler.clockOut = clockOut;
+rootHandler.fetchCookies = fetchCookies;
+
+module.exports = rootHandler;
