@@ -120,8 +120,34 @@ async function handleAttendance(body, mode) {
         : "Clock out via API with auto-fetched cookies"),
   };
 
-  const attendance =
-    mode === "clockin" ? await talenta.clockIn(payload) : await talenta.clockOut(payload);
+  let attendance;
+
+  try {
+    attendance = mode === "clockin" ? await talenta.clockIn(payload) : await talenta.clockOut(payload);
+  } catch (error) {
+    if (!talenta.isSourceInvalidRequestError(error)) {
+      throw error;
+    }
+
+    const browserResult =
+      mode === "clockin"
+        ? await talenta.clockInWithBrowser({
+            email: username,
+            password,
+            lat: location.lat,
+            long: location.long,
+            desc: payload.desc,
+          })
+        : await talenta.clockOutWithBrowser({
+            email: username,
+            password,
+            lat: location.lat,
+            long: location.long,
+            desc: payload.desc,
+          });
+
+    attendance = browserResult.attendance;
+  }
 
   return {
     cookies,

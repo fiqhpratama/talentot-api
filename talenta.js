@@ -1,4 +1,5 @@
 // Using native Node.js fetch and FormData (available in Node.js 18+)
+const { chromium } = require("playwright");
 const {
   extractAuthenticityToken,
   extractCookies,
@@ -12,6 +13,7 @@ const DEFAULT_USER_AGENT =
 const DEFAULT_LANGUAGE = "id-ID";
 const DEFAULT_TIMEZONE = "Asia/Jakarta";
 const DEFAULT_SCREEN = "1920x1080";
+const DEFAULT_VIEWPORT = { width: 1920, height: 1080 };
 
 function rot13(str) {
   return str.replace(/[a-zA-Z]/g, function (char) {
@@ -147,12 +149,152 @@ const attendancePost = async (obj) => {
   }
 };
 
+function isSourceInvalidRequestError(error) {
+  return (
+    error?.response?.status === 403 &&
+    error?.response?.data &&
+    typeof error.response.data === "object" &&
+    error.response.data.message === "Source Invalid Request"
+  );
+}
+
+async function submitAttendanceFromBrowser({
+  email,
+  password,
+  lat,
+  long,
+  desc,
+  isCheckOut = false,
+}) {
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({
+    locale: DEFAULT_LANGUAGE,
+    timezoneId: DEFAULT_TIMEZONE,
+    userAgent: DEFAULT_USER_AGENT,
+    viewport: DEFAULT_VIEWPORT,
+    geolocation: {
+      latitude: Number(lat),
+      longitude: Number(long),
+    },
+  });
+
+  try {
+    await context.grantPermissions(["geolocation"], {
+      origin: "https://hr.talenta.co",
+    });
+
+    const page = await context.newPage();
+    const loginPageUrl = "https://account.mekari.com/users/sign_in?app_referer=Talenta";
+
+    await page.goto(loginPageUrl, { waitUntil: "domcontentloaded" });
+    await page.fill('input[name="user[email]"]', email);
+    await page.fill('input[name="user[password]"]', password);
+
+    await Promise.all([
+      page.waitForLoadState("networkidle"),
+      page.click('input[type="submit"][value="Sign in"]'),
+    ]);
+
+    if (page.url().includes("/users/sign_in")) {
+      throw new Error("Browser login failed: still on sign-in page");
+    }
+
+    await page.goto("https://hr.talenta.co/live-attendance", { waitUntil: "networkidle" });
+
+    const result = await page.evaluate(
+      async ({ latitude, longitude, description, status }) => {
+        function rot13(str) {
+          return str.replace(/[a-zA-Z]/g, function (char) {
+            const start = char <= "Z" ? 65 : 97;
+            return String.fromCharCode(start + ((char.charCodeAt(0) - start + 13) % 26));
+          });
+        }
+
+        function encodeCoordinate(value) {
+          return rot13(btoa(String(value)));
+        }
+
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || null;
+        const data = new FormData();
+        data.append("longitude", encodeCoordinate(longitude));
+        data.append("latitude", encodeCoordinate(latitude));
+        data.append("status", status);
+        data.append("description", description);
+
+        if (csrfToken) {
+          data.append("_token", csrfToken);
+        }
+
+        const response = await fetch("/api/web/live-attendance/request", {
+          method: "POST",
+          headers: {
+            "X-Requested-With": "XMLHttpRequest",
+            ...(csrfToken ? { "X-CSRF-TOKEN": csrfToken } : {}),
+          },
+          body: data,
+          credentials: "include",
+        });
+
+        const text = await response.text();
+        let parsed = text;
+
+        try {
+          parsed = JSON.parse(text);
+        } catch (error) {
+          // Keep raw response text if it is not JSON.
+        }
+
+        return {
+          ok: response.ok,
+          status: response.status,
+          data: parsed,
+        };
+      },
+      {
+        latitude: String(lat),
+        longitude: String(long),
+        description: desc,
+        status: isCheckOut ? "checkout" : "checkin",
+      }
+    );
+
+    if (!result.ok) {
+      const error = new Error(`HTTP ${result.status}: Browser attendance request failed`);
+      error.response = {
+        status: result.status,
+        statusText: "Browser attendance request failed",
+        data: result.data,
+      };
+      throw error;
+    }
+
+    return {
+      attendance: result.data,
+      cookies: (await context.cookies())
+        .map((cookie) => `${cookie.name}=${cookie.value}`)
+        .join("; "),
+      source: "browser-fallback",
+    };
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+}
+
 const clockIn = async (obj) => {
   return await attendancePost({ ...obj, isCheckOut: false });
 };
 
 const clockOut = async (obj) => {
   return await attendancePost({ ...obj, isCheckOut: true });
+};
+
+const clockInWithBrowser = async (obj) => {
+  return await submitAttendanceFromBrowser({ ...obj, isCheckOut: false });
+};
+
+const clockOutWithBrowser = async (obj) => {
+  return await submitAttendanceFromBrowser({ ...obj, isCheckOut: true });
 };
 
 const resolveRedirectUrl = (baseUrl, locationHeader) => {
@@ -331,5 +473,8 @@ const fetchCookies = async (email, password) => {
 module.exports = {
   clockIn,
   clockOut,
+  clockInWithBrowser,
+  clockOutWithBrowser,
   fetchCookies,
+  isSourceInvalidRequestError,
 };
