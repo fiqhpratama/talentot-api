@@ -21,6 +21,9 @@
     "url": "git+https://github.com/ans-4175/talenta-api.git"
   },
   "author": "",
+  "engines": {
+    "node": "22.x"
+  },
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/ans-4175/talenta-api/issues"
