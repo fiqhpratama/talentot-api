@@ -4,7 +4,7 @@
   "description": "API HR Talenta for ClockIn and ClockOut",
   "main": "index.js",
   "scripts": {
-    "serve": "node server.js",
+    "serve": "node local-server.js",
     "clockin": "node execute.js clockin",
     "clockout": "node execute.js clockout",
     "scheduler:start": "node start.js",

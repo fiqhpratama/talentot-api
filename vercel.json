@@ -1,0 +1,25 @@
+{
+  "functions": {
+    "api/*.js": {
+      "runtime": "@vercel/node"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/health",
+      "destination": "/api/health"
+    },
+    {
+      "source": "/fetch-cookies",
+      "destination": "/api/fetch-cookies"
+    },
+    {
+      "source": "/clockin",
+      "destination": "/api/clockin"
+    },
+    {
+      "source": "/clockout",
+      "destination": "/api/clockout"
+    }
+  ]
+}
