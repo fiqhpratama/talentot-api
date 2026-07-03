@@ -1,6 +1,14 @@
 {
   "rewrites": [
     {
+      "source": "/",
+      "destination": "/api/root"
+    },
+    {
+      "source": "/favicon.ico",
+      "destination": "/api/favicon"
+    },
+    {
       "source": "/health",
       "destination": "/api/health"
     },
