@@ -2,8 +2,6 @@ const http = require("http");
 const talenta = require("./talenta");
 const { detectLocation } = require("./location");
 
-const port = Number(process.env.PORT || 3000);
-
 function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
@@ -12,6 +10,10 @@ function sendJson(res, statusCode, payload) {
 }
 
 function parseJsonBody(req) {
+  if (req.body && typeof req.body === "object") {
+    return Promise.resolve(req.body);
+  }
+
   return new Promise((resolve, reject) => {
     let body = "";
 
@@ -20,7 +22,6 @@ function parseJsonBody(req) {
 
       if (body.length > 1024 * 1024) {
         reject(new Error("Request body too large"));
-        req.destroy();
       }
     });
 
@@ -48,12 +49,11 @@ function getErrorStatusCode(error) {
 
   if (
     error.message === "username and password are required" ||
-    error.message === "lat and long are required when auto location detection fails"
+    error.message === "lat and long are required on Vercel deployments" ||
+    error.message === "lat and long are required when auto location detection fails" ||
+    error.message === "Invalid JSON body" ||
+    error.message === "Request body too large"
   ) {
-    return 400;
-  }
-
-  if (error.message === "Invalid JSON body" || error.message === "Request body too large") {
     return 400;
   }
 
@@ -67,6 +67,10 @@ async function resolveAttendanceLocation(payload) {
       long: String(payload.long),
       source: "request",
     };
+  }
+
+  if (process.env.VERCEL) {
+    throw new Error("lat and long are required on Vercel deployments");
   }
 
   try {
@@ -116,19 +120,28 @@ async function handleAttendance(body, mode) {
         : "Clock out via API with auto-fetched cookies"),
   };
 
-  const result =
+  const attendance =
     mode === "clockin" ? await talenta.clockIn(payload) : await talenta.clockOut(payload);
 
   return {
     cookies,
     location,
-    attendance: result,
+    attendance,
   };
 }
 
-const server = http.createServer(async (req, res) => {
+async function handler(req, res) {
   try {
-    if (req.method === "GET" && req.url === "/") {
+    const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+    const { pathname } = url;
+
+    if (req.method === "GET" && pathname === "/favicon.ico") {
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+
+    if (req.method === "GET" && pathname === "/") {
       sendJson(res, 200, {
         success: true,
         service: "talenta-api",
@@ -138,10 +151,11 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (req.method === "GET" && req.url === "/health") {
+    if (req.method === "GET" && pathname === "/health") {
       sendJson(res, 200, {
         success: true,
         status: "ok",
+        timestamp: new Date().toISOString(),
       });
       return;
     }
@@ -156,7 +170,7 @@ const server = http.createServer(async (req, res) => {
 
     const body = await parseJsonBody(req);
 
-    if (req.url === "/fetch-cookies") {
+    if (pathname === "/fetch-cookies") {
       sendJson(res, 200, {
         success: true,
         data: await handleFetchCookies(body),
@@ -164,7 +178,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (req.url === "/clockin") {
+    if (pathname === "/clockin") {
       sendJson(res, 200, {
         success: true,
         data: await handleAttendance(body, "clockin"),
@@ -172,7 +186,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (req.url === "/clockout") {
+    if (pathname === "/clockout") {
       sendJson(res, 200, {
         success: true,
         data: await handleAttendance(body, "clockout"),
@@ -190,8 +204,17 @@ const server = http.createServer(async (req, res) => {
       message: error.message,
     });
   }
-});
+}
 
-server.listen(port, () => {
-  console.log(`Talenta API server listening on port ${port}`);
-});
+handler.clockIn = talenta.clockIn;
+handler.clockOut = talenta.clockOut;
+handler.fetchCookies = talenta.fetchCookies;
+
+if (require.main === module) {
+  const port = Number(process.env.PORT || 3000);
+  http.createServer(handler).listen(port, () => {
+    console.log(`Talenta API server listening on port ${port}`);
+  });
+}
+
+module.exports = handler;
