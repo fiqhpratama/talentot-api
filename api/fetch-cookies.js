@@ -1,4 +1,5 @@
 const talenta = require("../index");
+const { parseJsonBody, sendJson } = require("./_utils");
 
 function getErrorStatusCode(error) {
   if (error.message === "Invalid email or password") {
@@ -18,7 +19,7 @@ function getErrorStatusCode(error) {
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
-    res.status(405).json({
+    sendJson(res, 405, {
       success: false,
       message: "Method not allowed",
     });
@@ -26,7 +27,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { username, password } = req.body || {};
+    const { username, password } = await parseJsonBody(req);
 
     if (!username || !password) {
       throw new Error("username and password are required");
@@ -34,14 +35,14 @@ module.exports = async function handler(req, res) {
 
     const cookies = await talenta.fetchCookies(username, password);
 
-    res.status(200).json({
+    sendJson(res, 200, {
       success: true,
       data: {
         cookies,
       },
     });
   } catch (error) {
-    res.status(getErrorStatusCode(error)).json({
+    sendJson(res, getErrorStatusCode(error), {
       success: false,
       message: error.message,
     });
