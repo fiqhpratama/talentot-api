@@ -2,7 +2,7 @@
   "name": "talenta-api",
   "version": "1.0.1",
   "description": "API HR Talenta for ClockIn and ClockOut",
-  "main": "index.js",
+  "main": "talenta.js",
   "scripts": {
     "serve": "node local-server.js",
     "clockin": "node execute.js clockin",

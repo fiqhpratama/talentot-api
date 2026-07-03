@@ -1,4 +1,4 @@
-const talenta = require("./index");
+const talenta = require("./talenta");
 const { getLocation } = require("./location");
 const config = require("./config");
 

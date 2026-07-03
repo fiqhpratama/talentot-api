@@ -1,4 +1,4 @@
-const talenta = require("../index");
+const talenta = require("../talenta");
 const { parseJsonBody, sendJson } = require("./_utils");
 
 function getErrorStatusCode(error) {
