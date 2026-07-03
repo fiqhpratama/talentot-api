@@ -1,5 +1,5 @@
 const http = require("http");
-const talenta = require("./index");
+const talenta = require("./talenta");
 const { detectLocation } = require("./location");
 
 const port = Number(process.env.PORT || 3000);
@@ -111,7 +111,9 @@ async function handleAttendance(body, mode) {
     cookies,
     desc:
       desc ||
-      (mode === "clockin" ? "Clock in via API with auto-fetched cookies" : "Clock out via API with auto-fetched cookies"),
+      (mode === "clockin"
+        ? "Clock in via API with auto-fetched cookies"
+        : "Clock out via API with auto-fetched cookies"),
   };
 
   const result =
@@ -126,9 +128,20 @@ async function handleAttendance(body, mode) {
 
 const server = http.createServer(async (req, res) => {
   try {
+    if (req.method === "GET" && req.url === "/") {
+      sendJson(res, 200, {
+        success: true,
+        service: "talenta-api",
+        status: "ok",
+        endpoints: ["/health", "/fetch-cookies", "/clockin", "/clockout"],
+      });
+      return;
+    }
+
     if (req.method === "GET" && req.url === "/health") {
       sendJson(res, 200, {
         success: true,
+        status: "ok",
       });
       return;
     }
@@ -144,28 +157,25 @@ const server = http.createServer(async (req, res) => {
     const body = await parseJsonBody(req);
 
     if (req.url === "/fetch-cookies") {
-      const data = await handleFetchCookies(body);
       sendJson(res, 200, {
         success: true,
-        data,
+        data: await handleFetchCookies(body),
       });
       return;
     }
 
     if (req.url === "/clockin") {
-      const data = await handleAttendance(body, "clockin");
       sendJson(res, 200, {
         success: true,
-        data,
+        data: await handleAttendance(body, "clockin"),
       });
       return;
     }
 
     if (req.url === "/clockout") {
-      const data = await handleAttendance(body, "clockout");
       sendJson(res, 200, {
         success: true,
-        data,
+        data: await handleAttendance(body, "clockout"),
       });
       return;
     }
