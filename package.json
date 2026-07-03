@@ -1,0 +1,33 @@
+{
+  "name": "talenta-api",
+  "version": "1.0.1",
+  "description": "API HR Talenta for ClockIn and ClockOut",
+  "main": "index.js",
+  "scripts": {
+    "serve": "node server.js",
+    "clockin": "node execute.js clockin",
+    "clockout": "node execute.js clockout",
+    "scheduler:start": "node start.js",
+    "scheduler:stop": "node stop.js",
+    "test-fix": "node test-script/test-fix.js",
+    "test-fetch-cookies": "node test-script/test-fetch-cookies.js",
+    "test-unit": "node test-script/test-unit.js",
+    "test-all": "find test-script -name 'test-*' -type f | xargs -I {} node {}",
+    "test-automated": "find test-script -name 'test-*' -type f | grep -v test-fetch-cookies | xargs -I {} node {}",
+    "example-fetch-cookies": "node examples/fetch-cookies-example.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ans-4175/talenta-api.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ans-4175/talenta-api/issues"
+  },
+  "homepage": "https://github.com/ans-4175/talenta-api#readme",
+  "dependencies": {
+    "node-cron": "^3.0.0",
+    "pm2": "^5.1.2"
+  }
+}

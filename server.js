@@ -1,0 +1,187 @@
+const http = require("http");
+const talenta = require("./index");
+const { detectLocation } = require("./location");
+
+const port = Number(process.env.PORT || 3000);
+
+function sendJson(res, statusCode, payload) {
+  res.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+  });
+  res.end(JSON.stringify(payload));
+}
+
+function parseJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+
+    req.on("data", (chunk) => {
+      body += chunk;
+
+      if (body.length > 1024 * 1024) {
+        reject(new Error("Request body too large"));
+        req.destroy();
+      }
+    });
+
+    req.on("end", () => {
+      if (!body) {
+        resolve({});
+        return;
+      }
+
+      try {
+        resolve(JSON.parse(body));
+      } catch (error) {
+        reject(new Error("Invalid JSON body"));
+      }
+    });
+
+    req.on("error", reject);
+  });
+}
+
+function getErrorStatusCode(error) {
+  if (error.message === "Invalid email or password") {
+    return 401;
+  }
+
+  if (
+    error.message === "username and password are required" ||
+    error.message === "lat and long are required when auto location detection fails"
+  ) {
+    return 400;
+  }
+
+  if (error.message === "Invalid JSON body" || error.message === "Request body too large") {
+    return 400;
+  }
+
+  return 500;
+}
+
+async function resolveAttendanceLocation(payload) {
+  if (payload.lat && payload.long) {
+    return {
+      lat: String(payload.lat),
+      long: String(payload.long),
+      source: "request",
+    };
+  }
+
+  try {
+    const detectedLocation = await detectLocation();
+    return {
+      lat: detectedLocation.latitude,
+      long: detectedLocation.longitude,
+      source: "auto-detected",
+    };
+  } catch (error) {
+    throw new Error("lat and long are required when auto location detection fails");
+  }
+}
+
+async function handleFetchCookies(body) {
+  const { username, password } = body;
+
+  if (!username || !password) {
+    throw new Error("username and password are required");
+  }
+
+  const cookies = await talenta.fetchCookies(username, password);
+
+  return {
+    cookies,
+  };
+}
+
+async function handleAttendance(body, mode) {
+  const { username, password, desc } = body;
+
+  if (!username || !password) {
+    throw new Error("username and password are required");
+  }
+
+  const location = await resolveAttendanceLocation(body);
+  const cookies = await talenta.fetchCookies(username, password);
+
+  const payload = {
+    lat: location.lat,
+    long: location.long,
+    cookies,
+    desc:
+      desc ||
+      (mode === "clockin" ? "Clock in via API with auto-fetched cookies" : "Clock out via API with auto-fetched cookies"),
+  };
+
+  const result =
+    mode === "clockin" ? await talenta.clockIn(payload) : await talenta.clockOut(payload);
+
+  return {
+    cookies,
+    location,
+    attendance: result,
+  };
+}
+
+const server = http.createServer(async (req, res) => {
+  try {
+    if (req.method === "GET" && req.url === "/health") {
+      sendJson(res, 200, {
+        success: true,
+      });
+      return;
+    }
+
+    if (req.method !== "POST") {
+      sendJson(res, 404, {
+        success: false,
+        message: "Route not found",
+      });
+      return;
+    }
+
+    const body = await parseJsonBody(req);
+
+    if (req.url === "/fetch-cookies") {
+      const data = await handleFetchCookies(body);
+      sendJson(res, 200, {
+        success: true,
+        data,
+      });
+      return;
+    }
+
+    if (req.url === "/clockin") {
+      const data = await handleAttendance(body, "clockin");
+      sendJson(res, 200, {
+        success: true,
+        data,
+      });
+      return;
+    }
+
+    if (req.url === "/clockout") {
+      const data = await handleAttendance(body, "clockout");
+      sendJson(res, 200, {
+        success: true,
+        data,
+      });
+      return;
+    }
+
+    sendJson(res, 404, {
+      success: false,
+      message: "Route not found",
+    });
+  } catch (error) {
+    sendJson(res, getErrorStatusCode(error), {
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+server.listen(port, () => {
+  console.log(`Talenta API server listening on port ${port}`);
+});
