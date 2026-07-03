@@ -4,10 +4,14 @@ const {
   extractCookies,
   mergeCookies,
   extractSessionCookie,
+  ensureBrowserCookies,
 } = require("./lib/auth-helpers");
 
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
+const DEFAULT_LANGUAGE = "id-ID";
+const DEFAULT_TIMEZONE = "Asia/Jakarta";
+const DEFAULT_SCREEN = "1920x1080";
 
 function rot13(str) {
   return str.replace(/[a-zA-Z]/g, function (char) {
@@ -61,6 +65,12 @@ const prepForm = async (obj) => {
   const { long, lat, desc, cookies, isCheckOut = false } = obj;
   const data = new FormData();
   const status = isCheckOut ? "checkout" : "checkin";
+  const cookieJar = ensureBrowserCookies(cookies, {
+    userAgent: DEFAULT_USER_AGENT,
+    language: DEFAULT_LANGUAGE,
+    timezone: DEFAULT_TIMEZONE,
+    screen: DEFAULT_SCREEN,
+  });
 
   const longEncoded = encoder(encoder(long, "base64"), "rot13");
   const latEncoded = encoder(encoder(lat, "base64"), "rot13");
@@ -70,18 +80,24 @@ const prepForm = async (obj) => {
   data.append("status", status);
   data.append("description", desc);
 
-  const csrfToken = await getCsrfToken(cookies);
+  const csrfToken = await getCsrfToken(cookieJar);
   if (csrfToken) {
     data.append("_token", csrfToken);
   }
 
   const headers = {
-    Cookie: cookies,
+    Cookie: cookieJar,
     "User-Agent": DEFAULT_USER_AGENT,
+    "Accept-Language": `${DEFAULT_LANGUAGE},en-US;q=0.9,en;q=0.8`,
     Referer: "https://hr.talenta.co/live-attendance",
     Origin: "https://hr.talenta.co",
     "X-Requested-With": "XMLHttpRequest",
   };
+
+  const rsCookie = cookieJar.match(/(?:^|;\s*)rs=([^;]+)/);
+  if (rsCookie) {
+    headers["X-HTTP-BROWSER"] = rsCookie[1];
+  }
 
   if (csrfToken) {
     headers["X-CSRF-TOKEN"] = csrfToken;
@@ -171,7 +187,7 @@ const followRedirectChainForTalentaCookies = async (startUrl, initialCookies, in
 
     const sessionCookie = extractSessionCookie(cookieJar);
     if (sessionCookie) {
-      return sessionCookie;
+      return cookieJar;
     }
 
     const locationHeader = response.headers.get("location");
@@ -185,7 +201,7 @@ const followRedirectChainForTalentaCookies = async (startUrl, initialCookies, in
 
   const sessionCookie = extractSessionCookie(cookieJar);
   if (sessionCookie) {
-    return sessionCookie;
+    return cookieJar;
   }
 
   throw new Error("Failed to get session cookies from Talenta");
@@ -300,7 +316,12 @@ const fetchCookies = async (email, password) => {
     );
 
     console.log("Successfully obtained session cookies");
-    return finalCookie;
+    return ensureBrowserCookies(finalCookie, {
+      userAgent: DEFAULT_USER_AGENT,
+      language: DEFAULT_LANGUAGE,
+      timezone: DEFAULT_TIMEZONE,
+      screen: DEFAULT_SCREEN,
+    });
   } catch (error) {
     console.error("Cookie fetching failed:", error.message);
     throw error;

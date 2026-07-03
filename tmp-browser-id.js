@@ -1,0 +1,1 @@
+function getBrowserId(){const e=sha256(navigator.userAgent+`${screen.width}x${screen.height}`+Intl.DateTimeFormat().resolvedOptions().timeZone+navigator.language);document.cookie=`browser_id=${e}; path=/`}function sha256(e){return CryptoJS.SHA256(e).toString(CryptoJS.enc.Hex)}getBrowserId();
